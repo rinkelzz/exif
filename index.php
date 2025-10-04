@@ -169,6 +169,7 @@ function generateThumbnail(string $filePath, ?string $mime): array
     return [$dataUri, $generated, $thumbMime];
 }
 
+
 function determineImageMimeType(string $filePath): array
 {
     $imageInfo = @getimagesize($filePath);
