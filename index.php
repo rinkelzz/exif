@@ -40,9 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors) && isset($_FILES['image'])) {
         $tmpPath = $_FILES['image']['tmp_name'];
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $uploadedMime = $finfo->file($tmpPath) ?: null;
-        if ($uploadedMime === null || strpos($uploadedMime, 'image/') !== 0) {
+        [$isValidImage, $uploadedMime] = determineImageMimeType($tmpPath);
+        if (!$isValidImage) {
             $errors[] = 'Die hochgeladene Datei ist kein gültiges Bild.';
         } else {
             $uploadedFilePath = $tmpPath;
@@ -50,11 +49,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors) && $uploadedFilePath !== null) {
-        $metadata = @exif_read_data($uploadedFilePath, null, true) ?: [];
-        if (empty($metadata)) {
-            $errors[] = 'Es konnten keine Metadaten aus dem Bild gelesen werden.';
+        if (!function_exists('exif_read_data')) {
+            $errors[] = 'Die PHP-EXIF-Erweiterung ist nicht verfügbar. Metadaten können nicht gelesen werden.';
         } else {
-            [$metadataHtml, $metadataText] = formatMetadata($metadata);
+            $metadata = @exif_read_data($uploadedFilePath, null, true) ?: [];
+            if (empty($metadata)) {
+                $errors[] = 'Es konnten keine Metadaten aus dem Bild gelesen werden.';
+            } else {
+                [$metadataHtml, $metadataText] = formatMetadata($metadata);
+            }
         }
 
         [$thumbnailDataUri, $thumbnailForEmail, $thumbnailMime] = generateThumbnail($uploadedFilePath, $uploadedMime);
@@ -115,7 +118,7 @@ function generateThumbnail(string $filePath, ?string $mime): array
 {
     $thumbMime = 'image/jpeg';
     $width = $height = 0;
-    $thumbnailData = @exif_thumbnail($filePath, $width, $height, $type);
+    $thumbnailData = function_exists('exif_thumbnail') ? @exif_thumbnail($filePath, $width, $height, $type) : false;
     if ($thumbnailData !== false && $width > 0 && $height > 0) {
         $thumbMime = imageTypeToMimeType($type ?? IMAGETYPE_JPEG);
         return ['data:' . $thumbMime . ';base64,' . base64_encode($thumbnailData), $thumbnailData, $thumbMime];
@@ -164,6 +167,30 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $dataUri = 'data:' . $thumbMime . ';base64,' . base64_encode($generated);
 
     return [$dataUri, $generated, $thumbMime];
+}
+
+
+function determineImageMimeType(string $filePath): array
+{
+    $imageInfo = @getimagesize($filePath);
+    if ($imageInfo !== false && isset($imageInfo['mime']) && strpos((string)$imageInfo['mime'], 'image/') === 0) {
+        return [true, (string)$imageInfo['mime']];
+    }
+
+    if (class_exists('finfo')) {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($filePath) ?: null;
+        if ($mime !== null && strpos($mime, 'image/') === 0) {
+            return [true, $mime];
+        }
+    } elseif (function_exists('mime_content_type')) {
+        $mime = mime_content_type($filePath);
+        if ($mime !== false && strpos($mime, 'image/') === 0) {
+            return [true, $mime];
+        }
+    }
+
+    return [false, null];
 }
 
 function sendMetadataEmail(string $recipient, string $metadataText, ?string $thumbnail, string $thumbMime, array $config): bool
