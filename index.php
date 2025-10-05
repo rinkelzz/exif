@@ -127,6 +127,7 @@ function generateThumbnail(string $filePath, ?string $mime): array
         return ['data:' . $thumbMime . ';base64,' . base64_encode($thumbnailData), $thumbnailData, $thumbMime];
     }
 
+
     if (!extension_loaded('gd') || !gdThumbnailSupportAvailable()) {
         return ['', null, $thumbMime];
     }
@@ -154,6 +155,7 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $targetHeight = (int)max(1, round($originalHeight * $scale));
 
     $thumbnail = imagecreatetruecolor($targetWidth, $targetHeight);
+
     if ($thumbnail === false) {
         imagedestroy($source);
         return ['', null, $thumbMime];
@@ -185,6 +187,7 @@ function generateThumbnail(string $filePath, ?string $mime): array
 
     return [$dataUri, $generated, $thumbMime];
 }
+
 
 function gdThumbnailSupportAvailable(): bool
 {
