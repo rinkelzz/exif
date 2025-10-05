@@ -120,7 +120,6 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $width = $height = 0;
     $thumbnailData = function_exists('exif_thumbnail') ? @exif_thumbnail($filePath, $width, $height, $type) : false;
     if ($thumbnailData !== false && $width > 0 && $height > 0) {
-
         $imageType = $type ?? IMAGETYPE_JPEG;
         if (function_exists('image_type_to_mime_type')) {
             $thumbMime = image_type_to_mime_type($imageType);
@@ -128,7 +127,8 @@ function generateThumbnail(string $filePath, ?string $mime): array
         return ['data:' . $thumbMime . ';base64,' . base64_encode($thumbnailData), $thumbnailData, $thumbMime];
     }
 
-    if (!extension_loaded('gd')) {
+
+    if (!extension_loaded('gd') || !gdThumbnailSupportAvailable()) {
         return ['', null, $thumbMime];
     }
 
@@ -155,10 +155,25 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $targetHeight = (int)max(1, round($originalHeight * $scale));
 
     $thumbnail = imagecreatetruecolor($targetWidth, $targetHeight);
-    imagecopyresampled($thumbnail, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $originalWidth, $originalHeight);
+
+    if ($thumbnail === false) {
+        imagedestroy($source);
+        return ['', null, $thumbMime];
+    }
+
+    if (!imagecopyresampled($thumbnail, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $originalWidth, $originalHeight)) {
+        imagedestroy($source);
+        imagedestroy($thumbnail);
+        return ['', null, $thumbMime];
+    }
 
     ob_start();
-    imagejpeg($thumbnail, null, 85);
+    if (!imagejpeg($thumbnail, null, 85)) {
+        ob_end_clean();
+        imagedestroy($source);
+        imagedestroy($thumbnail);
+        return ['', null, $thumbMime];
+    }
     $generated = ob_get_clean();
 
     imagedestroy($source);
@@ -171,6 +186,25 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $dataUri = 'data:' . $thumbMime . ';base64,' . base64_encode($generated);
 
     return [$dataUri, $generated, $thumbMime];
+}
+
+
+function gdThumbnailSupportAvailable(): bool
+{
+    $requiredFunctions = [
+        'imagecreatefromstring',
+        'imagecreatetruecolor',
+        'imagecopyresampled',
+        'imagejpeg',
+    ];
+
+    foreach ($requiredFunctions as $function) {
+        if (!function_exists($function)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function determineImageMimeType(string $filePath): array
