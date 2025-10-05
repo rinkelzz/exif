@@ -120,7 +120,11 @@ function generateThumbnail(string $filePath, ?string $mime): array
     $width = $height = 0;
     $thumbnailData = function_exists('exif_thumbnail') ? @exif_thumbnail($filePath, $width, $height, $type) : false;
     if ($thumbnailData !== false && $width > 0 && $height > 0) {
-        $thumbMime = imageTypeToMimeType($type ?? IMAGETYPE_JPEG);
+
+        $imageType = $type ?? IMAGETYPE_JPEG;
+        if (function_exists('image_type_to_mime_type')) {
+            $thumbMime = image_type_to_mime_type($imageType);
+        }
         return ['data:' . $thumbMime . ';base64,' . base64_encode($thumbnailData), $thumbnailData, $thumbMime];
     }
 
@@ -168,7 +172,6 @@ function generateThumbnail(string $filePath, ?string $mime): array
 
     return [$dataUri, $generated, $thumbMime];
 }
-
 
 function determineImageMimeType(string $filePath): array
 {
